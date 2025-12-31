@@ -4,38 +4,27 @@ Created on Wed Apr  9 15:55:20 2025
 
 @author: ripti
 """
-import gsw
+#import packages
 import math, os, gsw, glob, re, sys, warnings, calendar
 import numpy as np
 import matplotlib.pyplot as plt 
 import cmocean as cmo
 import pandas as pd
 import xarray as xr
-import math, os, gsw, glob, re, sys, warnings, calendar
-
-import matplotlib.pyplot as plt 
 import matplotlib.dates as mdates
 import matplotlib.colors as mcolors
 from matplotlib.colors import LinearSegmentedColormap 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-
 from scipy import integrate
 from scipy.interpolate import interp1d, griddata
 from scipy.ndimage import gaussian_filter
 from datetime import datetime
+from scipy.integrate import cumulative_trapezoid
 
-import xarray as xr
-import cartopy.crs as ccrs
-import numpy as np
-import matplotlib.pyplot as plt
-import cartopy.feature as cfeature
 
-from scipy import integrate
-from scipy.interpolate import interp1d
-from scipy.interpolate import griddata
+
 
 # Read CTD data from a file 'filename' and return it to a dictionary
 def ReadCTDData(filename, nheaders):
@@ -51,6 +40,7 @@ def ReadCTDData(filename, nheaders):
         words = line.strip().split(',')  # Split columns by comma
         
         # Extract data and check for 'no data' codes in CTD data
+        #no data in ctd shown as -9.990e-29
         try:
             pres[i] = float(words[4]) if float(words[4]) not in [0, -9.990e-29] else None
             temp[i] = float(words[7]) if float(words[7]) not in [0, -9.990e-29] else None
@@ -145,15 +135,8 @@ def create_dataset(dataset, lons, temp, salt, oxy, cast_nums, lats):
     
     return dataset
 
+#find largest common pressure between sets of casts for use later as p_ref
 def find_largest_common_pressure(cast1, cast2):
-    """
-    This function compares the pressure values from two casts and returns
-    the largest pressure that they both have in common.
-
-    :param cast1: Dictionary containing pressure data for the first cast
-    :param cast2: Dictionary containing pressure data for the second cast
-    :return: The largest common pressure value or None if no common pressure exists
-    """
     # Extract pressure values from the two casts
     pres1 = set(cast1.get('pressure', []))  # Use set to remove duplicates and make comparison easier
     pres2 = set(cast2.get('pressure', []))
@@ -168,15 +151,8 @@ def find_largest_common_pressure(cast1, cast2):
     # Return the largest common pressure
     return max(common_pressures)
 
-
+#finds p_ref between each pair of casts
 def compare_consecutive_casts(ctdfiles):
-    """
-    This function processes multiple CTD files and compares consecutive casts, finding the largest
-    common pressure between each pair of consecutive casts.
-
-    :param ctdfiles: List of file paths to CTD data files
-    :return: A list of tuples containing the two cast numbers and the largest common pressure
-    """
     results = []
     # Read CTD data from all the files
     casts = [ReadCTDData(file, 1) for file in ctdfiles]
@@ -195,6 +171,7 @@ def compare_consecutive_casts(ctdfiles):
     
     return results
 
+#gets data from one specific cast for use in gsw calculations
 def GetCastData(ctdfiles, cast_index):
     # Ensure the cast_index is valid (not out of range)
    if cast_index < 0 or cast_index >= len(ctdfiles):
@@ -229,14 +206,15 @@ def GetCastData(ctdfiles, cast_index):
 
    return SP, p, t, p_ref, lons,lats,average_lons, average_lats
 
+#takes info from pair of casts and returns geostrophic velocity (shear)
 def GeostrophicVelocity(ctdfiles, cast_number, cast_number2):
     SP4, p4, t4, p_ref4, lons4, lats4, average_lons4, average_lats4 = GetCastData(ctdfiles, cast_number)
-    SA4 = gsw.SA_from_SP(SP4, p4, average_lons4, average_lats4)
-    CT4 = gsw.CT_from_t(SA4, t4, p4)
+    SA4 = gsw.SA_from_SP(SP4, p4, average_lons4, average_lats4) #absolute salinity
+    CT4 = gsw.CT_from_t(SA4, t4, p4) #conservative temperature
     SA4 = np.array(SA4)
     CT4 = np.array(CT4)
     p4 = np.array(p4)
-    geo_strf_dyn_height_4 = gsw.geo_strf_dyn_height(SA4, CT4, p4, p_ref4)
+    geo_strf_dyn_height_4 = gsw.geo_strf_dyn_height(SA4, CT4, p4, p_ref4) #geostrophic streamfunction(dynamic height)
     
     SP5, p5, t5, p_ref5, lons5, lats5, average_lons5, average_lats5 = GetCastData(ctdfiles, cast_number2)
     SA5 = gsw.SA_from_SP(SP5, p5, average_lons5, average_lats5)
@@ -246,7 +224,7 @@ def GeostrophicVelocity(ctdfiles, cast_number, cast_number2):
     p5 = np.array(p5)
     geo_strf_dyn_height_5 = gsw.geo_strf_dyn_height(SA5, CT5, p5, p_ref4)
    
-    if max(p4) < 200 or max(p5) < 200:
+    if max(p4) < 200 or max(p5) < 200: #dont use casts too shallow for integration with p_ref 150
         print(f"Skipping cast pair {cast_number}-{cast_number2}: insufficient depth")
 
     common_depths_45 = np.intersect1d(p4, p5)
@@ -271,13 +249,15 @@ def GeostrophicVelocity(ctdfiles, cast_number, cast_number2):
         #print(lons)
         geostrophic_velocity = gsw.geostrophic_velocity(geo_strf_dyn_height_45_array, lons, lats)
         return geostrophic_velocity,lons,lats, p4_trimmed, p_ref4
-    print(f"Common depths between cast {cast_number} and {cast_number2}: min={np.min(common_depths_45)}, max={np.max(common_depths_45)}")
+    #print(f"Common depths between cast {cast_number} and {cast_number2}: min={np.min(common_depths_45)}, max={np.max(common_depths_45)}")
     return
 
+#visualize data in contour plot
 def ContourPlot(X, Y, Z, cmap, xlabel, ylabel, title, cbarlabel):
     fig, ax = plt.subplots(figsize=(10, 6))
     cf = ax.contourf(X, Y, Z, levels=120, cmap=cmap)
     ax.invert_yaxis()  # Depth increasing downward
+    #ax.set_ylim(Y.max(), Y.min())
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -314,44 +294,50 @@ labels = [f"Cast Number: {i}" for i in range(1, len(ctdfiles) + 1)]
 
 # Get results for consecutive pairs of casts
 results = compare_consecutive_casts(ctdfiles)
-#print(results)
+print(results)
 
-#SP4, p4, t4, p_ref4, lons4, lats4, average_lons4, average_lats4 = GetCastData(ctdfiles, 8)
+#quality check, comment out
+SP4, p4, t4, p_ref4, lons4, lats4, average_lons4, average_lats4 = GetCastData(ctdfiles, 0)
+print(average_lons4)
 #print(p4)
-       
+    
+#get shear, lons, lats, depth, and p_ref for each cast   
 geostrophicvel1,lons1,lats1, p4_trimmed1, p_ref41=GeostrophicVelocity(ctdfiles, 0, 1)       
 geostrophicvel2,lons2,lats2, p4_trimmed2, p_ref42=GeostrophicVelocity(ctdfiles, 1, 2)     
 geostrophicvel3,lons3,lats3, p4_trimmed3, p_ref43=GeostrophicVelocity(ctdfiles, 2, 3)     
 geostrophicvel4,lons4,lats4, p4_trimmed4, p_ref44=GeostrophicVelocity(ctdfiles, 3, 4)
 geostrophicvel5,lons5,lats5, p4_trimmed5, p_ref45=GeostrophicVelocity(ctdfiles, 4, 5)  
 geostrophicvel6,lons6,lats6, p4_trimmed6, p_ref46=GeostrophicVelocity(ctdfiles, 5, 6)
-#geostrophicvel7,lons7,lats7, p4_trimmed7, p_ref47=GeostrophicVelocity(ctdfiles, 6, 7)
+geostrophicvel7,lons7,lats7, p4_trimmed7, p_ref47=GeostrophicVelocity(ctdfiles, 6, 7)
 #geostrophicvel8,lons8,lats8, p4_trimmed8, p_ref48=GeostrophicVelocity(ctdfiles, 7, 8)             
 
-print(np.min(p4_trimmed1))
-print(np.max(p4_trimmed1))
+#print(np.min(p4_trimmed1))
+#print(np.max(p4_trimmed1))
 
+#just take geostrophic shear from above results
 geo1 = (geostrophicvel1[0])
 geo2 = (geostrophicvel2[0])
 geo3 = (geostrophicvel3[0])
 geo4 = (geostrophicvel4[0])
 geo5 = (geostrophicvel5[0])
 geo6 = (geostrophicvel6[0])
-#geo7 = (geostrophicvel7[0])
+geo7 = (geostrophicvel7[0])
 #geo8 = (geostrophicvel8[0])
 
-print(geo1.shape) #499
-print(geo1)
+#print(geo1.shape) #499
+#print(geo1)
 
+#just take lons from above results
 lons1 = (geostrophicvel1[1])
 lons2 = (geostrophicvel2[1])
 lons3 = (geostrophicvel3[1])
 lons4 = (geostrophicvel4[1])
 lons5 = (geostrophicvel5[1])
 lons6 = (geostrophicvel6[1])
-#lons7 = (geostrophicvel7[1])
+lons7 = (geostrophicvel7[1])
 #lons8 = (geostrophicvel8[1])
 
+#make list of lons for plotting
 lons = []
 lons.append(lons1[0])
 lons.append(lons2[0])
@@ -359,11 +345,10 @@ lons.append(lons3[0])
 lons.append(lons4[0])
 lons.append(lons5[0])
 lons.append(lons6[0])
-#lons.append(lons7[0])
+lons.append(lons7[0])
 #lons.append(lons8[0])
 
-
-#ContourPlot(lons,p,result,cmo.cm.speed, 'Longitude', 'Depth(m)', 'Focus CTD Data Velocity', 'Velocity (m/s')
+#ADCP BEGIN
 
 #open netCDF file using xarray
 adcp_data = xr.open_dataset('focus_adcp.nc')
@@ -382,7 +367,7 @@ adcp_data['u']
 adcp_data['depth']
 
 
-# Define function to get ADCP cast at a target longitude
+#Get ADCP "cast" at a target longitude (matches ctd casts)
 def GetADCPCasts(target_lon, vel_component='v'):
     lon_values = adcp_data['lon'].values
 
@@ -421,14 +406,14 @@ def GetADCPCasts(target_lon, vel_component='v'):
 
     return velocity, depth, vel_depth_array
 
+#qualoity check, comment out
+#vel, depth, vel_depth_array = GetADCPCasts(lons1[0])
+#print("Velocity values:\n", vel.values)
+#print("Depth values:\n", depth.values)
+#print("Velocity-Depth pairs:\n", vel_depth_array)
 
-vel, depth, vel_depth_array = GetADCPCasts(lons1[0])
 
-print("Velocity values:\n", vel.values)
-print("Depth values:\n", depth.values)
-print("Velocity-Depth pairs:\n", vel_depth_array)
-
-
+#integrate adcp velocity from p_ref to 150 dbar (or other)
 def integrate_adcp_velocity_single(lon, p_ref, vel_component='v'):
     """
     Computes the integrated ADCP velocity profile from p_ref to 25 dbar for a single cast,
@@ -447,8 +432,8 @@ def integrate_adcp_velocity_single(lon, p_ref, vel_component='v'):
             nan_arr = np.full_like(all_depths, np.nan)
             return nan_arr, all_depths, np.nan, np.nan, nan_arr
 
-        # Filter valid depth range: from p_ref (deep) to 25 dbar (shallow)
-        mask = (all_depths <= p_ref) & (all_depths >= 25)
+        # Filter valid depth range: from p_ref (deep) to 150 dbar (shallow)
+        mask = (all_depths <= p_ref) & (all_depths >= 150)
 
         if not np.any(mask):
             nan_arr = np.full_like(all_depths, np.nan)
@@ -472,7 +457,8 @@ def integrate_adcp_velocity_single(lon, p_ref, vel_component='v'):
         valid_velocities = valid_velocities[sort_idx]
 
         # Compute cumulative integral using trapezoidal rule
-        cumulative_integrated = np.cumsum(np.gradient(valid_depths) * valid_velocities)
+        cumulative_integrated = cumulative_trapezoid(valid_velocities, valid_depths, initial=0)
+
 
         # Mean velocity profile (pointwise mean up to each depth)
         depth_interval = valid_depths - valid_depths[0]
@@ -497,8 +483,8 @@ def integrate_adcp_velocity_single(lon, p_ref, vel_component='v'):
         return np.full(1, np.nan), np.full(1, np.nan), np.nan, np.nan, np.full(1, np.nan)
 
 # Example input values
-lon_example = lons1[0]       # or just a float like -149.0
-p_ref_example = p_ref41      # corresponding pressure reference value
+lon_example = lons7[0]       # or just a float like -149.0
+p_ref_example = p_ref47      # corresponding pressure reference value
 
 # Call the function
 cumulative_integrated, valid_depths, total_integrated, mean_velocity, mean_velocity_profile = integrate_adcp_velocity_single(
@@ -509,47 +495,30 @@ cumulative_integrated, valid_depths, total_integrated, mean_velocity, mean_veloc
 integrated_array = np.column_stack((valid_depths, cumulative_integrated))
 
 # Print result
-print("Depth (dbar) and Cumulative Integrated Velocity (m/s):")
+#print("Depth (dbar) and Cumulative Integrated Velocity (m/s):")
 print(integrated_array)
 
 #print("Depth profile (Cast 1):", depth_profile)
 #print("Cumulative integrated velocity (Cast 1):", cumulative_profile)
 #print("Total integrated velocity (Cast 1):", total_integrated)
 #print("Mean velocity over range (Cast 1):", mean_velocity)
+print(cumulative_integrated)
+
 #print(mean_velocity_profile)
+
 
 def GeostrophicFinal(cast_number, p_ref4, p4_trimmed, geo):
     lon_cast = lons[cast_number]
     p_ref_cast = p_ref4
 
-    # Get ADCP velocity-depth array
-    _, _, vel_depth_array = GetADCPCasts(lon_cast, vel_component='v')
+    # Call the integration function to get the mean velocity profile
+    _, valid_depths, _, _, mean_velocity_profile = integrate_adcp_velocity_single(
+        lon_cast, p_ref_cast, vel_component='v'
+    )
 
-    all_depths = vel_depth_array[:, 0]
-    all_velocities = vel_depth_array[:, 1]
-
-    if p_ref_cast is None or np.isnan(p_ref_cast):
-        print(f"Invalid p_ref for cast {cast_number}")
-        return np.full((1, 2), np.nan)  # [depth, velocity] shape
-
-    # Keep depths within 25 to p_ref range
-    mask = (all_depths <= p_ref_cast) & (all_depths >= 25)
-    valid_depths = all_depths[mask]
-    valid_velocities = all_velocities[mask]
-
-    # Clean out NaNs
-    valid_mask = ~np.isnan(valid_depths) & ~np.isnan(valid_velocities)
-    valid_depths = valid_depths[valid_mask]
-    valid_velocities = valid_velocities[valid_mask]
-
-    if len(valid_depths) < 2:
-        print(f"Insufficient valid depth-velocity data for cast {cast_number}")
+    if len(valid_depths) < 2 or np.all(np.isnan(mean_velocity_profile)):
+        print(f"Insufficient valid integrated ADCP data for cast {cast_number}")
         return np.full((1, 2), np.nan)
-
-    # Sort by increasing depth
-    sort_idx = np.argsort(valid_depths)
-    valid_depths = valid_depths[sort_idx]
-    valid_velocities = valid_velocities[sort_idx]
 
     # Get geo values aligned to ADCP depths (nearest depth match)
     geo1_depths = np.array(p4_trimmed)
@@ -559,8 +528,8 @@ def GeostrophicFinal(cast_number, p_ref4, p4_trimmed, geo):
         geo1_values[np.abs(geo1_depths - d).argmin()] for d in valid_depths
     ])
 
-    # Geostrophic velocity difference: ADCP - Geo
-    velocity_difference = valid_velocities - closest_geo_values
+    # Geostrophic velocity difference: Integrated ADCP mean profile - Geostrophic
+    velocity_difference = mean_velocity_profile - closest_geo_values
 
     # Optionally, reconstruct full profile (if needed)
     reconstructed_velocity = velocity_difference + closest_geo_values
@@ -568,21 +537,23 @@ def GeostrophicFinal(cast_number, p_ref4, p4_trimmed, geo):
     # Return paired array: [depth, velocity difference]
     result_array = np.column_stack((valid_depths, velocity_difference))
     return result_array
-# Example for cast 0
-geostrophic_result = GeostrophicFinal(0, p_ref41, p4_trimmed1, geo1)
 
-print("Depth (dbar) and Geostrophic Velocity Difference (m/s):")
-print(geostrophic_result)
 
-# Call GeostrophicFinal for each cast
+#quality check, comment out
+#geostrophic_result = GeostrophicFinal(0, p_ref41, p4_trimmed1, geo1)
+#print("Depth (dbar) and Geostrophic Velocity Difference (m/s):")
+#print(geostrophic_result)
+
+# Call GeostrophicFinal for each adcp "cast"
 updated_difference1 = GeostrophicFinal(0, p_ref41, p4_trimmed1, geo1)
 updated_difference2 = GeostrophicFinal(1, p_ref42, p4_trimmed2, geo2)
 updated_difference3 = GeostrophicFinal(2, p_ref43, p4_trimmed3, geo3)
 updated_difference4 = GeostrophicFinal(3, p_ref44, p4_trimmed4, geo4)
 updated_difference5 = GeostrophicFinal(4, p_ref45, p4_trimmed5, geo5)
 updated_difference6 = GeostrophicFinal(5, p_ref46, p4_trimmed6, geo6)
-#updated_difference7 = GeostrophicFinal(6, p_ref47, p4_trimmed7, geo7)
+updated_difference7 = GeostrophicFinal(6, p_ref47, p4_trimmed7, geo7)
 #updated_difference8 = GeostrophicFinal(7, p_ref48, p4_trimmed8, geo8)
+#print(updated_difference3)
 
 all_results = [
     updated_difference1,
@@ -591,13 +562,14 @@ all_results = [
     updated_difference4,
     updated_difference5,
     updated_difference6,
-    #updated_difference7,
+    updated_difference7,
     #updated_difference8
 ]
 
 # Extract depths and velocities separately and pad to same length
 depth_lists = []
 velocity_lists = []
+
 
 for arr in all_results:
     depths = arr[:, 0]
@@ -607,6 +579,8 @@ for arr in all_results:
 
 # Find max length of depth arrays
 max_len = max(len(d) for d in depth_lists)
+#print(velocity_lists)
+
 
 # Initialize arrays with NaNs for padding
 depth_array = np.full((max_len, len(depth_lists)), np.nan)
@@ -634,6 +608,8 @@ mean_depths = np.nanmean(depth_array, axis=1)
 # Replace Y with mean depths
 Y = np.tile(mean_depths[:, np.newaxis], (1, len(lons_array)))
 
+#print((velocity_array))
+
 # Plot
 ContourPlot(
     X, Y, velocity_array,
@@ -643,6 +619,8 @@ ContourPlot(
     title='Geostrophic Velocity Cross Section',
     cbarlabel='Velocity (m/s)'
 )
+
+print(Y.min(), Y.max())
 
 '''        
 

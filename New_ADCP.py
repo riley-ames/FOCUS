@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+Created on Thu Oct  2 22:12:35 2025
+
+@author: ripti
+"""
+
+# -*- coding: utf-8 -*-
+"""
 Created on Tue Mar 25 12:42:33 2025
 
 @author: ripti
@@ -214,8 +221,8 @@ else:
 
 labels = [f"Cast Number: {i}" for i in range(1, len(ctdfiles) + 1)]
 
-
-#plotting CTD data
+'''
+plotting CTD data
 def ContourPlot(x,y,z, cmap, xlabel, ylabel,title,cbarlabel): #plot cross sections of temp, oxy, and salt
     #create figure
     fig, ax = plt.subplots(figsize = (8, 6))
@@ -247,7 +254,7 @@ def ContourPlot(x,y,z, cmap, xlabel, ylabel,title,cbarlabel): #plot cross sectio
 ContourPlot(average_lons,p,temp, cmo.cm.thermal, 'Longitude', 'Depth(m)', 'Focus CTD Data Temperature', 'Temperature(C)')
 ContourPlot(average_lons,p,salt,cmo.cm.haline, 'Longitude', 'Depth(m)', 'Focus CTD Data Salinity', 'Salinity')
 ContourPlot(average_lons,p,oxy, cmo.cm.oxy, 'Longitude', 'Depth(m)', 'Focus CTD Data Oxygen', 'Oxygen (kg/mol')
-
+'''
 
 #set font properties
 font = {'family' : 'Arial',
@@ -293,7 +300,7 @@ def add_features(ax):
 
 #opens netCDF file gebco_bathy using xarray
 #interpolates data to new grid with specified longitude and latitude ranges and intervals
-bathy = xr.open_dataset('FS.bath')
+bathy = xr.open_dataset('gebco_bathy.nc')
 bathy = bathy.interp(lon=np.arange(min_lon, max_lon,.05),lat=np.arange(min_lat, max_lat,.05)) #creates grid where minimum and maximum longitudes are th calculated CTD minimum and maximum longitudes
 #opens netCDF file 
 ds = xr.open_dataset("os75nb.nc")          
@@ -305,40 +312,33 @@ ds['depth'] = ds['depth'].isel(time=0)
 ds = ds.swap_dims({"depth_cell":"depth"})
 
 # Extract longitude values for each time step
-lon_times = ds['lon'].isel(time=slice(None)).values  # Assuming longitude varies with time
+#lon_times = ds['lon'].isel(time=slice(None)).values  # Assuming longitude varies with time
 
 # Add longitude values as a new coordinate associated with 'time'
-ds = ds.assign_coords(lon=('time', lon_times))
+#ds = ds.assign_coords(lon=('time', lon_times))
 
-ds = ds.sortby('lon')
+ds = ds.sortby('time')
 
 #plot ADCP cross section from minimum to maximum CTD longitude
-fig, (ax, bx) = plt.subplots(2, 1, figsize=(20,10), sharex= True, constrained_layout = True)
+fig, (ax, bx) = plt.subplots(2, 1, figsize=(20,10), sharex=True, constrained_layout=True)
 
 var = ['u', 'v']
-labels = ["Zonal Velocity (ms-1)", "Meridional Velocity (ms-1)"]
+labels = ["Zonal Velocity (m/s)", "Meridional Velocity (m/s)"]
 
 for i, vari in enumerate(var):
-    ds[vari].plot(x='lon', y="depth", ylim=(800,0), vmin=-2, vmax=2, 
+    ds[vari].plot(x='time', y='depth', ylim=(800,0), vmin=-2, vmax=2,
                   ax=[ax, bx][i],
                   cmap="cmo.balance",
-                  cbar_kwargs={'pad':0.01,'label':labels[i]})
-    
-if min_lon is not None and max_lon is not None:
-    [ax, bx][i].set_xlim(min_lon, max_lon)
+                  cbar_kwargs={'pad': 0.01, 'label': labels[i]})
 
-#ds["amp"].plot(y="depth", ylim=(1000,0), cmap="cmo.dense", ax=cx)
-#creates figure with two vertical subplots sharing x-axis
-#plots u and v against depth using colormap
-rot_ticks(bx, 0, 'center')
-#set axis labels
+# Format time axis
+for axis in [ax, bx]:
+    axis.xaxis.set_major_locator(mdates.AutoDateLocator())
+    axis.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+    rot_ticks(axis, 45, 'right')  # rotate time ticks
+
 ax.set(xlabel=None)
-bx.set(xlabel='Longitude')
-#cx.set(xlabel=None)
-#set figure title
-fig.suptitle("FOCUS Ship ADCP Data")
+bx.set(xlabel='Time')
+fig.suptitle("FOCUS Ship ADCP Velocity vs Time", fontsize=22)
 
 plt.show()
-
-
-
