@@ -5,6 +5,7 @@ Created on Mon Feb  2 12:01:34 2026
 @author: ripti
 """
 
+#----------------------------------------------------------------ABANDON ALL HOPE, YE WHO ENTER HERE----------------------------------------------------------------
 
 #import packages
 import math, os, gsw, glob, re, sys, warnings, calendar
@@ -24,8 +25,6 @@ from scipy.interpolate import interp1d, griddata
 from scipy.ndimage import gaussian_filter
 from datetime import datetime
 from scipy.integrate import cumulative_trapezoid
-
-
 
 
 # Read CTD data from a file 'filename' and return it to a dictionary
@@ -86,7 +85,6 @@ def interpData(ctdfiles):
     salt = np.empty((700, 9))
     oxy = np.empty((700, 9))
     cast_nums = []
-
     
     ctdfiles_sorted = sorted(ctdfiles, key=lambda x: ReadCTDData(x, 1).get('cast', 0))
             
@@ -94,7 +92,6 @@ def interpData(ctdfiles):
         filename = file
         
         cast = ReadCTDData(filename, 1)
-
 
         try: #gets longitude and latitude values from each cast
             lon = cast.get("longitude")
@@ -116,7 +113,6 @@ def interpData(ctdfiles):
         
         cast = ReadCTDData(filename, 1)
 
-
         try: #gets longitude and latitude values from each cast
             time = cast.get("time")
             if time is not None:
@@ -127,7 +123,6 @@ def interpData(ctdfiles):
       
         times.append(time)
 
-        
         cast_num = cast.get('cast')
         cast_nums.append(cast_num)
 
@@ -135,13 +130,11 @@ def interpData(ctdfiles):
         cast_temp = cast.get("temperature")
         cast_salt = cast.get("salt")
         cast_oxy = cast.get("oxygen")
-     
 
         temp[:,i] = np.interp(p, cast_pres, cast_temp, left=np.nan, right=np.nan)
         salt[:,i] = np.interp(p, cast_pres, cast_salt, left=np.nan, right=np.nan)
         oxy[:,i] = np.interp(p, cast_pres, cast_oxy, left=np.nan, right=np.nan)
      
-
     return p, lons, temp, salt, oxy, cast_nums, lats, times
 
 
@@ -156,7 +149,6 @@ def create_dataset(dataset, lons, temp, salt, oxy, cast_nums, lats, times):
     dataset['lats'].append(lats)
     dataset['times'].append(times)
 
-    
     return dataset
 
 #find largest common pressure between sets of casts for use later as p_ref
@@ -247,7 +239,6 @@ def GeostrophicStream_all_casts_array(ctdfiles, n_levels=700, p_min=1):
     SA_all = np.full((n_levels, n_casts), np.nan)
     CT_all = np.full((n_levels, n_casts), np.nan)
 
-
     # loop over casts
     for i in range(n_casts):
         SP, p, t, _, _, _, avg_lon, avg_lat, _, _ = GetCastData(ctdfiles, i)
@@ -288,6 +279,7 @@ def GeostrophicStream_all_casts_array(ctdfiles, n_levels=700, p_min=1):
         
         SA_all[in_range, i] = np.interp(p_common[in_range], p_valid, SA_i)
         CT_all[in_range, i] = np.interp(p_common[in_range], p_valid, CT_i)
+        
     return SA_all, CT_all, geo_strf_all, p_ref, p_common, cast_depths
 
 
@@ -312,7 +304,6 @@ labels = [f"Cast Number: {i}" for i in range(1, len(ctdfiles) + 1)]
 
 #get metadata (can print for quality check)
 p_deep, lon_cast, lat_cast = get_cast_metadata(ctdfiles)
-
 
 # compute dynamic height and SA and CT
 SA, CT, geo_strf_all, p_ref, p_common, cast_depth = GeostrophicStream_all_casts_array(ctdfiles, n_levels=700, p_min=1)
@@ -343,7 +334,6 @@ print(f"Number of NaNs in geo_strf_all: {num_nans}")
 total_elements = geo_strf_all.size
 nan_fraction = num_nans / total_elements
 print(f"Fraction of NaNs: {nan_fraction:.2%}")
-
 
 #plot CT
 fig, ax = plt.subplots(figsize=(10, 6))
