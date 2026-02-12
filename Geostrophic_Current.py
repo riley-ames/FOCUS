@@ -390,333 +390,78 @@ cbar.set_label('Geostrophic Stream (m)')
 plt.tight_layout()
 plt.show()
 
-#calculate geostrophic velocity (maintain MxN array)
-geovel, lon, lat = gsw.geostrophic_velocity(geo_strf_all, avg_lons, avg_lats)
+#OLD WAY, MxN array
+#geovel, lon, lat = gsw.geostrophic_velocity(geo_strf_all, avg_lons, avg_lats)
 
-#print shape and contents of geostrophic velocity
-print(geovel.shape)
-print(geovel)
 
-#plot geostrophic velocity
+#NEW WAY, do it pairwise, see if it changes, print everything for checking
+
+n_levels, n_casts = geo_strf_all.shape
+
+# allocate velocity array (between casts)
+geo_vel_pair = np.full((n_levels, n_casts - 1), np.nan)
+
+# midpoint lon/lat for each cast pair
+#that's fine
+
+lon_mid = 0.5 * (avg_lons[:-1] + avg_lons[1:])
+lat_mid = 0.5 * (avg_lats[:-1] + avg_lats[1:])
+
+for i in range(n_casts - 1):
+    #check
+    print("\n-------------------------------------------")
+    print(f"Cast Pair: {i}  &  {i+1}")
+    print(f"Lon Pair: {avg_lons[i]:.4f}, {avg_lons[i+1]:.4f}")
+    print(f"Lat Pair: {avg_lats[i]:.4f}, {avg_lats[i+1]:.4f}")
+
+    # dynamic height for the cast pair (M x 2)
+    dyn_pair = geo_strf_all[:, i:i+2]
+
+    # lon/lat for the cast pair
+    lon_pair = np.array([avg_lons[i], avg_lons[i + 1]])
+    lat_pair = np.array([avg_lats[i], avg_lats[i + 1]])
+
+    # count valid depth levels
+    valid_levels = np.sum(np.isfinite(dyn_pair).all(axis=1))
+    print(f"Valid overlapping depth levels: {valid_levels}")
+
+    # compute geostrophic velocity
+    v_pair, _, _ = gsw.geostrophic_velocity(
+        dyn_pair,
+        lon_pair,
+        lat_pair
+    )
+
+    #check
+    print(f"Velocity shape: {v_pair.shape}")
+    print(f"Min velocity: {np.nanmin(v_pair):.5f} m/s")
+    print(f"Max velocity: {np.nanmax(v_pair):.5f} m/s")
+    print(f"Mean velocity: {np.nanmean(v_pair):.5f} m/s")
+
+    # OPTIONAL: print full vertical profile
+    print("Velocity profile (first 20 levels):")
+    print(v_pair[:20, 0])
+
+    # store result
+    geo_vel_pair[:, i] = v_pair[:, 0]
+
+
+print("geo_vel_pair shape:", geo_vel_pair.shape)
+# (n_levels, n_casts - 1)
+
 fig, ax = plt.subplots(figsize=(10, 6))
 pcm = ax.pcolormesh(
-    lon,
+    lon_mid,
     p_common,
-    geovel,          
+    geo_vel_pair,
     cmap=cmo.cm.balance,
     shading='nearest'
 )
 ax.invert_yaxis()
 ax.set_xlabel('Longitude (°E)')
 ax.set_ylabel('Pressure (dbar)')
-ax.set_title('Geostrophic Velocity Section')
+ax.set_title('Pairwise Geostrophic Velocity (GSW)')
 cbar = fig.colorbar(pcm, ax=ax)
 cbar.set_label('Geostrophic Velocity (m/s)')
 plt.tight_layout()
 plt.show()
-
-
-'''
-# Check NaNs
-total_points = geo_velocity_array.size
-total_nans = np.sum(np.isnan(geo_velocity_array))
-percent_nans = total_nans / total_points * 100
-print(f"Total NaNs in geostrophic velocity: {total_nans} / {total_points} ({percent_nans:.2f}%)")
-
-
-
-#quality check, comment out
-
-SP4, p4, t4, p_ref4, lons4, lats4, average_lons4, average_lats4, times, total_time = GetCastData(ctdfiles, 8)
-
-SP1, p1, t1, p_ref1, lons1, lats1, avg_lon1, avg_lat1, times1, _ = GetCastData(ctdfiles, 0)
-SP2, p2, t2, p_ref2, lons2, lats2, avg_lon2, avg_lat2, times2, _ = GetCastData(ctdfiles, 1)
-
-print("p_ref1:", p_ref1)
-print("pressure range cast1:", (min(p1), max(p1)))
-print("pressure range cast2:", (min(p2), max(p2)))
-
-print(SP4)
-print(p_ref4)
-print(average_lons4)
-print(p4)
-print(t4) 
-
-
-geostrf1, lons1, lats1, p1 = GeostrophicStream(ctdfiles, 0)
-geostrf2, lons2, lats2, p2 = GeostrophicStream(ctdfiles, 1)
-geostrf3,lons3,lats3, p3 = GeostrophicStream(ctdfiles, 2)
-geostrf4,lons4,lats4, p4 = GeostrophicStream(ctdfiles, 3)
-geostrf5,lons5,lats5, p5 = GeostrophicStream(ctdfiles, 4)
-geostrf6,lons6,lats6, p6 = GeostrophicStream(ctdfiles, 5)
-geostrf7,lons7,lats7, p7 = GeostrophicStream(ctdfiles, 6)
-geostrf8,lons8,lats8, p8 = GeostrophicStream(ctdfiles, 7)
-geostrf9,lons9,lats9, p9 = GeostrophicStream(ctdfiles, 8)
-
-geovel1, depth1 = GeostrophicVelocity(ctdfiles, 0, 1)
-geovel2, depth2 = GeostrophicVelocity(ctdfiles, 1, 2)
-geovel3, depth3 = GeostrophicVelocity(ctdfiles, 2, 3)
-geovel4, depth4 = GeostrophicVelocity(ctdfiles, 3, 4)
-geovel5, depth5 = GeostrophicVelocity(ctdfiles, 4, 5)
-geovel6, depth6 = GeostrophicVelocity(ctdfiles, 5, 6)
-geovel7, depth7 = GeostrophicVelocity(ctdfiles, 6, 7)
-geovel8, depth8 = GeostrophicVelocity(ctdfiles, 7, 8)
-
-geo1 = geovel1[0]
-geo2 = geovel2[0]
-geo3 = geovel3[0]
-geo4 = geovel4[0]
-geo5 = geovel5[0]
-geo6 = geovel6[0]
-geo7 = geovel7[0]
-geo8 = geovel8[0]
-
-lon1 = geovel1[1]
-lon2 = geovel2[1]
-lon3 = geovel3[1]
-lon4 = geovel4[1]
-lon5 = geovel5[1]
-lon6 = geovel6[1]
-lon7 = geovel7[1]
-lon8 = geovel8[1]
-
-
-#make list of lons for plotting
-lons = []
-lons.append(lons1)
-lons.append(lons2)
-lons.append(lons3)
-lons.append(lons4)
-lons.append(lons5)
-lons.append(lons6)
-lons.append(lons7)
-lons.append(lons8)
-
-geo_strfs = [geostrf1, geostrf2, geostrf3, geostrf4, geostrf5, geostrf6, geostrf7, geostrf8, geostrf9]
-depths = [p1,p2,p3,p4,p5,p6,p7,p8,p9]
-lons = [lons1, lons2, lons3, lons4, lons5, lons6, lons7, lons8, lons9]
-
-
-#quality check
-print(lons)
-print(depths)
-print(len(geostrf4))
-# define common pressure grid
-min_depth = min([np.min(d) for d in depths])
-max_depth = max([np.max(d) for d in depths])
-common_p = np.linspace(min_depth, max_depth, 500)  # 500 points vertical
-
-#longitude array for plotting, one per cast
-LON = np.array([lons])  # pick first lon of each pair
-
-
-#interpolate dynamic height profiles onto same common pressure grid
-geo_strf_matrix = np.full((len(common_p), len(geo_strfs)), np.nan)
-
-for i, (dh, depth) in enumerate(zip(geo_strfs, depths)):
-    dh = np.array(dh).flatten()
-    depth = np.array(depth).flatten()
-    
-    mask = np.isfinite(dh) & np.isfinite(depth)
-    if np.sum(mask) > 3:
-        geo_strf_matrix[:, i] = np.interp(common_p, depth[mask], dh[mask], left=np.nan, right=np.nan)
-
-#compute average longitude per cast
-lons_avg = lons
-
-#contour plot
-ContourPlot(
-    X=lons_avg,
-    Y=common_p,
-    Z=geo_strf_matrix,
-    cmap=cmo.cm.balance,
-    xlabel='Longitude (°E)',
-    ylabel='Pressure (dbar)',
-    title='Dynamic Height Cross Section',
-    cbarlabel='Dynamic Height (m²/s²)'
-)
-
-
-
-#same as above but for geostrophic velocity
-
-geos = [geo1, geo2, geo3, geo4, geo5, geo6, geo7, geo8]
-lon = [lon1, lon2, lon3, lon4, lon5, lon6, lon7, lon8]
-depth = [depth1, depth2, depth3, depth4, depth5, depth6, depth7, depth8]
-lon = [float(x) for x in lon]
-
-for i, d in enumerate(depths):
-    print(f"Cast {i+1}: max pressure = {np.max(d):.1f} dbar")
-
-print("Common grid max pressure:", common_p.max())
-
-#print(lon)
-min_depth = min([np.min(d) for d in depth])
-max_depth = max([np.max(d) for d in depth])
-#common_p = np.linspace(min_depth, max_depth, 700)
-
-
-
-
-geo_vel_matrix = np.full((len(common_p), len(geos)), np.nan)
-
-for i, (vel, dep) in enumerate(zip(geos, depth)):
-    vel = np.asarray(vel).flatten()
-    dep = np.asarray(dep).flatten()
-    min_len = min(len(vel), len(dep))
-    vel, dep = vel[:min_len], dep[:min_len]
-
-    mask = np.isfinite(vel) & np.isfinite(dep)
-    if np.sum(mask) > 3:
-        sorted_idx = np.argsort(dep[mask])
-        geo_vel_matrix[:, i] = np.interp(
-            common_p,
-            dep[mask][sorted_idx],
-            vel[mask][sorted_idx],
-            left=np.nan,
-            right=np.nan
-        )
-
-fig, ax = plt.subplots(figsize=(10, 6))
-
-pcm = ax.pcolormesh(
-    lons,
-    common_p,
-    geo_strf_matrix,
-    cmap=cmo.cm.balance,
-    shading='nearest'
-)
-
-ax.invert_yaxis()
-ax.set_xlabel('Longitude (°E)')
-ax.set_ylabel('Pressure (dbar)')
-ax.set_title('Dynamic Height (Geostrophic Streamfunction)')
-
-cbar = fig.colorbar(pcm, ax=ax)
-cbar.set_label('Dynamic Height (m² s⁻²)')
-
-plt.tight_layout()
-plt.show()
-
-
-
-fig, ax = plt.subplots(figsize=(10, 6))
-
-pcm = ax.pcolormesh(
-    lon,
-    common_p,
-    geo_vel_matrix,
-    cmap=cmo.cm.balance,
-    shading='nearest'
-)
-
-ax.invert_yaxis()
-ax.set_xlabel('Longitude (°E)')
-ax.set_ylabel('Pressure (dbar)')
-ax.set_title('Geostrophic Velocity Cross Section')
-
-cbar = fig.colorbar(pcm, ax=ax)
-cbar.set_label('Geostrophic Velocity (m/s)')
-
-plt.tight_layout()
-plt.show()
-
-ContourPlot(
-    X=np.array(lon),
-    Y=common_p,
-    Z=geo_vel_matrix,
-    cmap=cmo.cm.balance,
-    xlabel='Longitude (°E)',
-    ylabel='Pressure (dbar)',
-    title='Geostrophic Velocity Cross Section',
-    cbarlabel='Velocity (m/s)'
-)
-
-
-# ------------------------------
-# 3. Compute geostrophic velocity between consecutive casts
-# ------------------------------
-def GeostrophicVelocity_all_pairs_safe(geo_strf_all, lon_cast, lat_cast):
-    """
-    Compute geostrophic velocity between consecutive casts on a common pressure grid.
-
-    Parameters
-    ----------
-    geo_strf_all : ndarray (n_levels, n_casts)
-        Dynamic height (geostrophic streamfunction)
-    lon_cast : ndarray (n_casts,)
-        Longitude of each cast
-    lat_cast : ndarray (n_casts,)
-        Latitude of each cast
-
-    Returns
-    -------
-    geo_velocity_array : ndarray (n_levels, n_casts-1)
-        Geostrophic velocity between consecutive casts; NaNs where computation not possible
-    """
-
-    n_levels, n_casts = geo_strf_all.shape
-    geo_velocity_array = np.full((n_levels, n_casts-1), np.nan)
-
-    lon_cast = np.ravel(lon_cast)
-    lat_cast = np.ravel(lat_cast)
-
-    # Loop over consecutive cast pairs
-    for i in range(n_casts - 1):
-        geo1 = geo_strf_all[:, i]
-        geo2 = geo_strf_all[:, i + 1]
-
-        # Valid depths where BOTH casts have finite dynamic height
-        valid_mask = np.isfinite(geo1) & np.isfinite(geo2)
-        valid_idx = np.where(valid_mask)[0]
-
-        if len(valid_idx) < 2:
-            # Not enough points to compute velocity
-            continue
-
-        # Extract only valid points
-        geo_pair = np.vstack([geo1[valid_idx], geo2[valid_idx]])  # shape (2, n_valid)
-        lons_pair = np.array([lon_cast[i], lon_cast[i + 1]])
-        lats_pair = np.array([lat_cast[i], lat_cast[i + 1]])
-
-        # Compute geostrophic velocity along the valid depth points
-        velocity = gsw.geostrophic_velocity(geo_pair, lons_pair, lats_pair)  # length n_valid-1
-        velocity = np.ravel(velocity)  # ensure 1D
-
-        # Assign velocity to the depth array; note it has n_valid-1 points
-        geo_velocity_array[valid_idx[1:], i] = velocity
-
-    return geo_velocity_array
-
-
-
-
-
-#visualize data in contour plot
-def ContourPlot(X, Y, Z, cmap, xlabel, ylabel, title, cbarlabel):
-    fig, ax = plt.subplots(figsize=(10, 6))
-    cf = ax.contourf(X, Y, Z, levels=120, cmap=cmap)
-    #ax.invert_yaxis()  # Depth increasing downward
-    #ax.set_ylim(Y.max(), Y.min())
-    ax.invert_yaxis()
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    cbar = fig.colorbar(cf, ax=ax, orientation='vertical')
-    cbar.set_label(cbarlabel)
-    plt.tight_layout()
-    plt.show()
-
-def PlotVelocityProfile(velocity, depth, cast_pair_num, lon):
-    plt.figure(figsize=(6, 8))
-    plt.plot(velocity, depth)       # x = velocity, y = depth
-    plt.gca().invert_yaxis()        # depth increases downward
-    plt.xlabel('Geostrophic Velocity (m/s)')
-    plt.ylabel('Pressure (dbar)')
-    plt.title(f'Geostrophic Velocity Profile\nCast {cast_pair_num} at Lon {lon:.2f}°')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-
-'''
